@@ -465,6 +465,12 @@ static int index_set_fd_types(struct index *idx, const char * name) {
     return 0;
 }
 
+/* 创建索引方法入口 */
+// name 索引名字
+// config 配置文件
+// memory 
+// opts
+// index_new_opt
 struct index *index_new(const char *name, const char *config, 
   unsigned int memory, int opts, struct index_new_opt *opt) {
     struct index *idx;
@@ -477,14 +483,15 @@ struct index *index_new(const char *name, const char *config,
 #ifdef WORDS_BIGENDIAN
     bigendian = 1;
 #endif
-
+// endian os 大小端
     if (opts & INDEX_NEW_ENDIAN) {
         bigendian = opt->bigendian;
     }
-
+// 因为不检索内容，我们不在这里初始化vocab，
     /* note that we don't initialise a vocab here, because there is nothing to
      * search.  It should be initialised at construction time */
 
+// 第一步：
     /* XXX: first section here shared with index_load: factorise
        into common init function. */
 
@@ -492,7 +499,7 @@ struct index *index_new(const char *name, const char *config,
         ERROR("allocating memory for index object");
         return NULL;
     }
-
+// 初始化index下变量
     /* set all pointers to NULL so we know what to free on failure */
     idx->flags = 0;
     idx->fd = NULL;
@@ -519,6 +526,7 @@ struct index *index_new(const char *name, const char *config,
     idx->doc_order_word_pos_vectors = 1;
     idx->impact_vectors = 0;
     
+    // 加载 词根算法
     /* initialise stemming algorithm if requested */
     if (opts & INDEX_NEW_STEM) {
         if ((opt->stemmer == INDEX_STEM_PORTERS) 
@@ -542,6 +550,7 @@ struct index *index_new(const char *name, const char *config,
         idx->stem = NULL;
     }
 
+// stopped term 【好像是根据上一步的词根算法加载停用词文件构建停用词对象】
     if (opts & INDEX_NEW_STOP) {
         idx->istop 
           = stop_new_file(index_stemmer(idx), idx->stem, opt->stop_file);
@@ -554,7 +563,7 @@ struct index *index_new(const char *name, const char *config,
     } else {
         idx->istop = NULL;
     }
-
+// qstop 和 stop有什么不同，是一样的结构
     if (opts & INDEX_NEW_QSTOP) {
         if (!(opt->qstop_file 
             && (idx->qstop 
@@ -577,13 +586,13 @@ struct index *index_new(const char *name, const char *config,
     if (opts & INDEX_NEW_PARSEBUF) {
         idx->params.parsebuf = opt->parsebuf;
     }
-
+// a file descriptor set 
     if ((idx->fd = fdset_new(0644, 1)) == NULL) {
         ERROR("creating fdset for new index");
         index_delete(idx);
         return NULL;
     }
-
+// 使用fdset和indexname，创建了一组后缀不同的文件
     if (index_set_fd_types(idx, name) < 0) {
         ERROR("setting fdset type names");
         index_delete(idx);
@@ -595,12 +604,14 @@ struct index *index_new(const char *name, const char *config,
     assert(idx->repos_type != idx->tmp_type);
     assert(idx->index_type != idx->repos_type);
 
+// 看看文件是否ok
     if ((fd = fdset_create(idx->fd, idx->index_type, 0)) < 0) { 
         ERROR("creating the new index file");
         index_delete(idx);
         return NULL;
     } 
 
+// 一些参数的保存包括 文件文件页数、term长度、语料长度、btree叶子内部节点保存策略
     /* get/apply parameters */
     if (storagep_defaults(&idx->storage, fd) < 0) {
         ERROR("determining maximum file size");
@@ -609,6 +620,8 @@ struct index *index_new(const char *name, const char *config,
         return NULL;
     }
     idx->storage.bigendian = bigendian; 
+
+// todo
     retval = fdset_unpin(idx->fd, idx->index_type, 0, fd);
     assert(retval == FDSET_OK);
     fd = -1;
@@ -631,6 +644,7 @@ struct index *index_new(const char *name, const char *config,
         }
     }
 
+// document map
     if ((idx->map = docmap_new(idx->fd, idx->docmap_type, 
         idx->storage.pagesize,
         0, idx->storage.max_filesize, 0, &dm_ret)) == NULL) {
